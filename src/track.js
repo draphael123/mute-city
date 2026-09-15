@@ -25,10 +25,10 @@ const CP = [
   [-400, 1800, 140, Math.PI * 2, 22],  // 15 heading +x
   [ 100, 1800, 110, Math.PI * 2, 20],  // 16 the Dive
   [ 600, 1800,  70, Math.PI * 2, 20],  // 17 jump gap sits in 16→17
-  [ 850, 1900,  64, Math.PI * 2, 17],  // 18 Chicane
-  [1050, 1780,  62, Math.PI * 2, 17],
-  [1250, 1900,  60, Math.PI * 2, 17],
-  [1450, 1780,  58, Math.PI * 2, 17],
+  [ 850, 1875,  64, Math.PI * 2, 19],  // 18 Chicane
+  [1080, 1790,  62, Math.PI * 2, 19],
+  [1300, 1875,  60, Math.PI * 2, 19],
+  [1520, 1790,  58, Math.PI * 2, 19],
   [1700, 1700,  56, Math.PI * 2, 20],  // 22
   [2400, 1600,  55, Math.PI * 2, 22],  // 23 Harbour Sweep
   [2700, 1000,  52, Math.PI * 2, 22],
@@ -48,16 +48,27 @@ const NCP = CP.length;
 const FEATURES = {
   recharge: [[0, 0.25], [1, 0.05]],
   gap: [[16, 0.42], [16, 0.60]],
-  norail: [[26, 0.35], [28, 0.95]],
+  norail: [ // {from, to, side}: 0 = both sides, 'outer' = outside of the bend at the midpoint
+    { from: [26, 0.35], to: [28, 0.95], side: 0 },
+    { from: [23, 0.45], to: [24, 0.55], side: 'outer' },
+  ],
   pads: [ // [idx, frac, lane (m, +right)]
     [1, 0.55, -11], [1, 0.55, 11],
-    [7, 0.25, 0],
+    [7, 0.25, 0], [8, 0.5, 0],
+    [13, 0.3, -10], [13, 0.32, 0], [13, 0.34, 10],
     [15, 0.45, -8], [15, 0.45, 8],
     [16, 0.18, 0],
-    [22, 0.35, 0],
+    [22, 0.6, 0],
     [24, 0.5, -10], [24, 0.5, 10],
     [32, 0.4, 0],
   ],
+  jumps: [[22, 0.3, 0]],                       // jump plates: launch you into the air
+  mines: [[27, 0.3, -8], [27, 0.55, 6], [27, 0.8, -2], [28, 0.2, 10]],
+  rough: [ // dirt: {from, to, u0, u1} with u as a fraction of the half width
+    { from: [3, 0.5], to: [4, 0.4], u0: 0.35, u1: 1.0 },
+    { from: [24, 0.15], to: [24, 0.75], u0: -1.0, u1: -0.35 },
+  ],
+  tunnel: [[21, 0.55], [22, 0.75]],
   arches: [[2, 0.6], [6, 0.2], [9, 0.5], [13, 0.0], [17, 0.6], [23, 0.5], [25, 0.5], [28, 0.5]],
   names: [[3, 0.3, 'SKYLINE BEND'], [7, 0.2, 'THE TWIST'], [12, 0.2, 'HALFPIPE'], [16, 0.0, 'THE DIVE'], [18, 0.0, 'CHICANE'], [23, 0.4, 'HARBOUR SWEEP'], [29, 0.2, 'HAIRPIN']],
 };
@@ -121,15 +132,25 @@ export function buildTrack() {
     // features in metres
     recharge: [sOf(...FEATURES.recharge[0]), sOf(...FEATURES.recharge[1])],
     gap: [sOf(...FEATURES.gap[0]), sOf(...FEATURES.gap[1])],
-    norail: [sOf(...FEATURES.norail[0]), sOf(...FEATURES.norail[1])],
-    pads: FEATURES.pads.map(([i, f, lane]) => ({ s: sOf(i, f), lane })),
+    norail: FEATURES.norail.map(r => ({ range: [sOf(...r.from), sOf(...r.to)], side: r.side })),
+    pads: FEATURES.pads.map(([i, f, lane]) => ({ s: sOf(i, f), lane, cool: 0 })),
+    jumps: FEATURES.jumps.map(([i, f, lane]) => ({ s: sOf(i, f), lane, cool: 0 })),
+    mines: FEATURES.mines.map(([i, f, lane]) => ({ s: sOf(i, f), lane, cool: 0 })),
+    rough: FEATURES.rough.map(r => ({ range: [sOf(...r.from), sOf(...r.to)], u0: r.u0, u1: r.u1 })),
+    tunnel: [sOf(...FEATURES.tunnel[0]), sOf(...FEATURES.tunnel[1])],
     arches: FEATURES.arches.map(([i, f]) => sOf(i, f)),
     names: FEATURES.names.map(([i, f, name]) => ({ s: sOf(i, f), name })),
     inRange(s, r) { s = wrap(s); return r[0] <= r[1] ? (s >= r[0] && s <= r[1]) : (s >= r[0] || s <= r[1]); },
     onRecharge(s) { return this.inRange(s, this.recharge); },
     inGap(s) { return this.inRange(s, this.gap); },
-    hasRail(s) { return !this.inRange(s, this.norail); },
+    hasRail(s, side = 0) { for (const r of this.norail) if (this.inRange(s, r.range) && (r.side === 0 || side === 0 || r.side === side)) return false; return true; },
+    onRough(s, u) { const f = u / this.halfW(s); for (const r of this.rough) if (this.inRange(s, r.range) && f >= r.u0 && f <= r.u1) return true; return false; },
+    roughAhead(s, u) { for (let d = 30; d <= 130; d += 25) if (this.onRough(s + d, u)) return true; return false; },
+    roughEscape(s, u) { const hw = this.halfW(s + 60); for (const r of this.rough) { if (!this.inRange(s + 60, r.range)) continue; const f = u / hw; if (f >= r.u0 - 0.15 && f <= r.u1 + 0.15) return (r.u0 <= -0.99 ? r.u1 * hw + 5 : r.u0 * hw - 5); } return u; },
+    inTunnel(s) { return this.inRange(s, this.tunnel); },
   };
+  // resolve 'outer' rail sides now that curvature is known
+  for (const r of track.norail) if (r.side === 'outer') { const mid = (r.range[0] + r.range[1]) / 2; r.side = track.curv(mid) > 0 ? 1 : -1; }
   return track;
 }
 
@@ -183,10 +204,38 @@ export function buildTrackMeshes(tr) {
     g.add(new THREE.Mesh(ge, mat));
   };
   for (const side of [-1, 1]) {
-    strip(side, s => tr.hasRail(s), railMat, 0.05, 3.2, 0.2, 0.2);
-    strip(side, s => tr.hasRail(s), lightMat, 3.2, 3.2, -0.2, 0.7);
-    strip(side, s => tr.hasRail(s), lightMat, 0.08, 0.08, -0.9, 0.0);
-    strip(side, s => !tr.hasRail(s), warnMat, 0.08, 0.08, -1.2, 0.0);
+    strip(side, s => tr.hasRail(s, side), railMat, 0.05, 3.2, 0.2, 0.2);
+    strip(side, s => tr.hasRail(s, side), lightMat, 3.2, 3.2, -0.2, 0.7);
+    strip(side, s => tr.hasRail(s, side), lightMat, 0.08, 0.08, -0.9, 0.0);
+    strip(side, s => !tr.hasRail(s, side), warnMat, 0.08, 0.08, -1.2, 0.0);
+  }
+  // dirt patches
+  const roughTex = canvasTex(128, 128, (c, w, h) => { c.fillStyle = '#5a3a22'; c.fillRect(0, 0, w, h); for (let i = 0; i < 900; i++) { c.fillStyle = `rgba(${90 + Math.random() * 80 | 0},${50 + Math.random() * 40 | 0},${20 + Math.random() * 30 | 0},0.7)`; c.fillRect(Math.random() * w, Math.random() * h, 3, 3); } });
+  for (const r of tr.rough) {
+    const v = [], id = [];
+    for (let i = 0; i < N; i++) { const j = (i + 1) % N; if (!tr.inRange(tr.s[i], r.range) || !tr.inRange(tr.s[j], r.range)) continue;
+      for (const q of [i, j]) { const a = pos[q].clone().addScaledVector(R[q], r.u0 * hw[q]).addScaledVector(Nn[q], 0.14), b = pos[q].clone().addScaledVector(R[q], r.u1 * hw[q]).addScaledVector(Nn[q], 0.14); v.push(a.x, a.y, a.z, b.x, b.y, b.z); }
+      const b0 = v.length / 3 - 4; id.push(b0, b0 + 1, b0 + 2, b0 + 1, b0 + 3, b0 + 2); }
+    if (!v.length) continue; const ge = new THREE.BufferGeometry(); ge.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); ge.setIndex(id); ge.computeVertexNormals();
+    const uvs = new Float32Array(v.length / 3 * 2); for (let i = 0; i < uvs.length / 2; i++) { uvs[i * 2] = (i % 2); uvs[i * 2 + 1] = Math.floor(i / 2) * 0.5; } ge.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    g.add(new THREE.Mesh(ge, new THREE.MeshBasicMaterial({ map: roughTex, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false })));
+  }
+  // tunnel: rings + a dark ceiling ribbon with a light line
+  { const ringGeo = new THREE.TorusGeometry(hw[0] + 7, 1.3, 8, 36), ringMat = new THREE.MeshStandardMaterial({ color: 0x404860, roughness: 0.6, metalness: 0.5, emissive: 0x1a2040, emissiveIntensity: 0.6 });
+    for (let s = tr.tunnel[0]; s < tr.tunnel[1]; s += 14) { const f = mkFrame(); tr.frame(s, f); const m = new THREE.Mesh(ringGeo, ringMat); m.matrixAutoUpdate = false; m.matrix.makeBasis(f.r, f.n, f.t).setPosition(f.p.clone().addScaledVector(f.n, 5)); g.add(m); }
+    strip(1, s => tr.inTunnel(s), new THREE.MeshBasicMaterial({ color: 0x0b0d18, side: THREE.DoubleSide }), 13, 13, -2 * hw[0] - 6, 6);
+    strip(1, s => tr.inTunnel(s), new THREE.MeshBasicMaterial({ color: 0xfff0c0, side: THREE.DoubleSide }), 12.8, 12.8, -hw[0] - 0.5, -hw[0] + 0.5);
+  }
+  // jump plates (blue) and mines
+  const jumpTex = canvasTex(64, 128, (c, w) => { c.fillStyle = '#1f6fff'; c.fillRect(0, 0, w, 128); c.fillStyle = '#bfe6ff'; for (let y = 0; y < 3; y++) { c.beginPath(); c.moveTo(4, y * 40 + 30); c.lineTo(w / 2, y * 40 + 4); c.lineTo(w - 4, y * 40 + 30); c.lineTo(w - 4, y * 40 + 40); c.lineTo(w / 2, y * 40 + 14); c.lineTo(4, y * 40 + 40); c.fill(); } c.fillStyle = '#fff'; c.fillRect(8, 118, w - 16, 6); });
+  const jumpMat = new THREE.MeshBasicMaterial({ map: jumpTex, side: THREE.DoubleSide });
+  for (const jp of tr.jumps) { const f = mkFrame(); tr.frame(jp.s, f); const m = new THREE.Mesh(new THREE.PlaneGeometry(9, 14), jumpMat); m.matrixAutoUpdate = false; m.matrix.makeBasis(f.r, f.t, f.n).setPosition(f.p.clone().addScaledVector(f.r, jp.lane).addScaledVector(f.n, 0.18)); g.add(m); }
+  tr.mineMeshes = [];
+  { const body = new THREE.SphereGeometry(1.1, 10, 8), spike = new THREE.ConeGeometry(0.28, 1.1, 6), bm = new THREE.MeshStandardMaterial({ color: 0x30303a, roughness: 0.5, metalness: 0.7 }), lm = new THREE.MeshBasicMaterial({ color: 0xff2030 });
+    for (const mn of tr.mines) { const f = mkFrame(); tr.frame(mn.s, f); const grp = new THREE.Group(); grp.add(new THREE.Mesh(body, bm));
+      for (const [x, y, z] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 0, -1], [0.7, 0.7, 0], [-0.7, 0.7, 0], [0, 0.7, 0.7], [0, 0.7, -0.7]]) { const sp = new THREE.Mesh(spike, bm); sp.position.set(x * 1.3, y * 1.3, z * 1.3); sp.lookAt(x * 3, y * 3, z * 3); sp.rotateX(Math.PI / 2); grp.add(sp); }
+      const light = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), lm); light.position.set(0, 1.5, 0); grp.add(light);
+      grp.matrixAutoUpdate = false; grp.matrix.makeBasis(f.r, f.n, f.t).setPosition(f.p.clone().addScaledVector(f.r, mn.lane).addScaledVector(f.n, 1.4)); g.add(grp); mn.mesh = grp; tr.mineMeshes.push(grp); }
   }
   // recharge strip (pink) — nearly full width, low glow. side=1, offsets measured from the right edge.
   strip(1, s => tr.onRecharge(s), new THREE.MeshBasicMaterial({ color: 0xff4fd8, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }), 0.12, 0.12, -2 * hw[0] + 2, -2);

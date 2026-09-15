@@ -21,7 +21,7 @@ export function ensureAudio() {
 export function setEngine(v, thrust, boost, on = true) {
   if (!engine) return; const t = now();
   if (!on) { engine.g.gain.setTargetAtTime(0, t, 0.1); engine.ng.gain.setTargetAtTime(0, t, 0.1); return; }
-  const f = 48 + v * 1.25 + boost * 90;
+  const f = baseF + v * 1.25 + boost * 90;
   engine.o1.frequency.setTargetAtTime(f, t, 0.05); engine.o2.frequency.setTargetAtTime(f * 1.01 + 1, t, 0.05);
   engine.lp.frequency.setTargetAtTime(250 + v * 9 + thrust * 500 + boost * 1400, t, 0.06);
   engine.g.gain.setTargetAtTime(0.10 + thrust * 0.08 + boost * 0.1, t, 0.08);
@@ -44,4 +44,22 @@ export const sfx = {
   fall() { tone(400, 60, 0.9, 0.35, 'sawtooth'); noise(0.9, 400, 0.4, 0.4, 'lowpass'); },
   explode() { noise(1.6, 200, 0.3, 1.0, 'lowpass'); tone(90, 25, 1.4, 0.5, 'square'); },
   recharge(on) { if (on) tone(440, 660, 0.15, 0.12, 'sine'); },
+  whoosh() { noise(0.5, 1400, 0.9, 0.35); },
+  spin() { tone(300, 1200, 0.5, 0.25, 'sawtooth'); noise(0.5, 2500, 1.2, 0.25); },
+  side() { tone(700, 200, 0.18, 0.3, 'square'); noise(0.15, 1800, 1, 0.3); },
+  ko() { noise(0.9, 150, 0.4, 0.9, 'lowpass'); tone(200, 30, 0.8, 0.5, 'sawtooth'); setTimeout(() => { tone(880, 1760, 0.15, 0.3, 'square'); }, 150); },
+  alarm() { tone(1100, 1100, 0.08, 0.18, 'square'); },
+  mine() { noise(0.6, 250, 0.4, 0.8, 'lowpass'); tone(150, 40, 0.5, 0.4, 'square'); },
+  boostLoopOn() { /* engine boost param carries the sustain */ },
 };
+// announcer: browser speech synthesis (free, offline). Toggled from settings.
+let sayOn = true, voice = null;
+export function setAnnouncer(on) { sayOn = on; }
+export function say(text, rate = 1.15, pitch = 0.9) {
+  if (!sayOn || !('speechSynthesis' in window)) return;
+  try { const u = new SpeechSynthesisUtterance(text); u.rate = rate; u.pitch = pitch; u.volume = Math.min(1, sfxVol * 1.2);
+    if (!voice) { const vs = speechSynthesis.getVoices(); voice = vs.find(v => /en.*(Google|Microsoft).*(David|Guy|Mark|Male|US English)/i.test(v.name)) || vs.find(v => v.lang && v.lang.startsWith('en')) || null; }
+    if (voice) u.voice = voice; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch {}
+}
+// per-machine engine timbre: heavy machines growl lower
+let baseF = 48; export function setEngineBase(f) { baseF = f; }

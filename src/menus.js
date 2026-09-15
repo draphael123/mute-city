@@ -1,6 +1,6 @@
 // MUTE CITY — settings (persisted) + pause menu. Keyboard, mouse and gamepad.
 const KEY = 'mc-settings';
-const DEF = { music: 60, sfx: 80, steer: 100, camera: 'near', shake: true, quality: 'high', unit: 'km/h', minimap: true, intro: true };
+const DEF = { music: 60, sfx: 80, steer: 100, camera: 'near', shake: true, quality: 'high', unit: 'km/h', minimap: true, intro: true, announcer: true };
 const ROWS = [
   { k: 'music', label: 'MUSIC VOLUME', min: 0, max: 100, step: 10, fmt: v => v + '%' },
   { k: 'sfx', label: 'SFX VOLUME', min: 0, max: 100, step: 10, fmt: v => v + '%' },
@@ -11,6 +11,7 @@ const ROWS = [
   { k: 'unit', label: 'SPEED UNIT', opts: ['km/h', 'mph'], fmt: v => v },
   { k: 'minimap', label: 'MINIMAP', opts: [true, false], fmt: v => v ? 'ON' : 'OFF' },
   { k: 'intro', label: 'OPENING FLYOVER', opts: [true, false], fmt: v => v ? 'ON' : 'OFF' },
+  { k: 'announcer', label: 'ANNOUNCER', opts: [true, false], fmt: v => v ? 'ON' : 'OFF' },
 ];
 function load() { try { return { ...DEF, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { ...DEF }; } }
 export const settings = {
