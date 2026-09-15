@@ -3,7 +3,10 @@ import * as THREE from '../vendor/three.module.js';
 import { buildTrack, buildTrackMeshes } from './track.js';
 import { buildWorld } from './world.js';
 import { makeMachine, dressMachine } from './machine.js';
-import { ensureAudio, setEngine, sfx } from './audio.js';
+import { ensureAudio, setEngine, setSfxVolume, sfx } from './audio.js';
+import { music } from './music.js';
+import { settings, openSettings, openPause, closeAll, isOpen as menuOpen, pollGamepad } from './menus.js';
+const S = settings.data;
 
 const Q = new URLSearchParams(location.search);
 const BOT = Q.get('bot') === '1';
@@ -14,12 +17,15 @@ const sign = x => x < 0 ? -1 : 1;
 // ---------- renderer / scene ----------
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+function applyQuality() { renderer.setPixelRatio(S.quality === 'low' ? 0.75 : S.quality === 'medium' ? 1 : Math.min(devicePixelRatio, 1.5)); }
+applyQuality();
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(70, 1, 0.5, 9000);
 function resize() { const w = innerWidth || 1280, h = innerHeight || 720; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
+settings.onChange((k, v) => { if (k === 'quality') { applyQuality(); resize(); } if (k === 'music') music.setVolume(v / 100); if (k === 'sfx') setSfxVolume(v / 100); });
+music.setVolume(S.music / 100); setSfxVolume(S.sfx / 100);
 
 const tr = buildTrack();
 scene.add(buildTrackMeshes(tr));
@@ -55,7 +61,7 @@ function placeMachine(m, s, u, n, h, roll, bob) {
 // ---------- race state ----------
 const race = { state: 'title', t: 0, countdown: 0, time: 0, rank: 30, finalRank: 0, msg: '', msgT: 0, shake: 0, fade: 0, nameIdx: 0 };
 const dsWrap = d => { const L = tr.length; d = ((d % L) + L) % L; return d > L / 2 ? d - L : d; };
-function resetRace() {
+function placeGrid() {
   everyone.forEach((m, i) => { // grid: rows of 3, player in row 4 (P14 of 30)
     const slot = i === 0 ? 13 : (i <= 13 ? i - 1 : i); const row = Math.floor(slot / 3), lane = [-13, 0, 13][slot % 3];
     m.s = tr.wrap(-16 - row * 11); m.u = lane; m.v = 0; m.prog = m.s - tr.length;
@@ -63,15 +69,47 @@ function resetRace() {
     else { m.lane = lane * 0.9; m.uT = m.lane; m.boostT = 0; m.padT = 0; m.lapsDone = -1; m.half = false; m.laps = []; m.lapStart = 0; m.boostCool = 3 + rnd() * 6; }
   });
   for (const pd of tr.pads) pd.cool = 0;
-  race.state = 'countdown'; race.countdown = 3.999; race._cd = 4; race.time = 0; race.msg = ''; race.msgT = 0; race.fade = 0; race.nameIdx = 0;
-  ui.end.hidden = true; ui.title.hidden = true;
+}
+function resetRace() {
+  placeGrid(); closeAll(); camInit = false; race.state = 'countdown'; race.countdown = 3.999; race._cd = 4; race.time = 0; race.msg = ''; race.msgT = 0; race.fade = 0; race.nameIdx = 0;
+  ui.end.hidden = true; ui.title.hidden = true; ui.intro.hidden = true; ui.black.style.opacity = 0; music.setDuck(1); music.play('race'); race.trackT = 6;
+}
+function startFromTitle() { if (S.intro) startIntro(); else resetRace(); }
+function pause() { if (race.state !== 'race' && race.state !== 'countdown') return; race.prev = race.state; race.state = 'paused'; music.setDuck(0.35); openPause({ resume: () => { race.state = race.prev; music.setDuck(1); }, restart: () => resetRace(), quit: () => quitToTitle() }); }
+function quitToTitle() { closeAll(); race.state = 'title'; ui.title.hidden = false; ui.end.hidden = true; ui.intro.hidden = true; ui.black.style.opacity = 0; music.setDuck(1); music.play('menu'); }
+function onStart() { if (race.state === 'title') startFromTitle(); else if (race.state === 'intro') resetRace(); else if (race.state === 'race' || race.state === 'countdown') pause(); else if (race.state === 'finished' || race.state === 'retired') resetRace(); }
+// ---------- intro flyover ----------
+const INTRO = [
+  { dur: 3.8, a: [-200, -85, 55], b: [30, -30, 12], look: [-45, 0, 1], cap: 'MUTE CITY' },
+  { dur: 3.8, a: [tr.sOf(7, 0.55), 80, 40], b: [tr.sOf(9, 0.6), 80, 40], look: 'ahead', cap: 'TWIST ROAD' },
+  { dur: 3.4, a: [tr.sOf(11, 0.8), -140, 120], b: [tr.sOf(14, 0.3), -140, 120], look: 'road', cap: 'HALFPIPE' },
+  { dur: 3.2, a: [tr.gap[0] - 280, 50, 26], b: [tr.gap[1] + 150, 50, 26], look: [(tr.gap[0] + tr.gap[1]) / 2, 0, -12], cap: 'THE DIVE' },
+  { dur: 3.0, a: ['grid+', 0, 32], b: ['grid', 0, 7], look: 'player', cap: '3 LAPS \u00b7 30 MACHINES' },
+];
+const intro = { i: 0, t: 0 };
+const _cp = new THREE.Vector3(), _cl = new THREE.Vector3();
+const resolveS = v => v === 'grid' ? player.s + 18 : v === 'grid+' ? player.s + 160 : v;
+function startIntro() { placeGrid(); race.state = 'intro'; intro.i = 0; intro.t = 0; ui.title.hidden = true; ui.end.hidden = true; ui.intro.hidden = false; music.play('menu'); }
+function updateIntro(dt) {
+  const sh = INTRO[intro.i]; intro.t += dt;
+  const f = Math.min(1, intro.t / sh.dur), e = f * f * (3 - 2 * f);
+  const sA = resolveS(sh.a[0]), sB = resolveS(sh.b[0]);
+  const s = sA + (sB - sA) * e, u = sh.a[1] + (sh.b[1] - sh.a[1]) * e, n = sh.a[2] + (sh.b[2] - sh.a[2]) * e;
+  tr.toWorld(s, u, n, _cp);
+  if (sh.look === 'ahead') tr.toWorld(s + 60, 0, 0, _cl); else if (sh.look === 'road') tr.toWorld(s + 30, 0, 0, _cl); else if (sh.look === 'player') tr.toWorld(player.s, player.u, 1, _cl); else tr.toWorld(sh.look[0], sh.look[1], sh.look[2], _cl);
+  camera.position.copy(_cp); camera.up.set(0, 1, 0); camera.lookAt(_cl); camera.fov = 58; camera.updateProjectionMatrix();
+  ui.introCap.textContent = sh.cap; ui.introCap.style.opacity = f < 0.15 ? f / 0.15 : f > 0.85 ? (1 - f) / 0.15 : 1;
+  ui.black.style.opacity = f < 0.1 ? 1 - f / 0.1 : f > 0.92 ? (f - 0.92) / 0.08 : 0;
+  if (f >= 1) { intro.i++; intro.t = 0; if (intro.i >= INTRO.length) resetRace(); }
 }
 
 // ---------- input ----------
 const keys = {};
-addEventListener('keydown', e => { keys[e.code] = true; if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault(); ensureAudio();
-  if (race.state === 'title' && (e.code === 'Enter' || e.code === 'Space')) resetRace();
-  if ((race.state === 'finished' || race.state === 'retired') && e.code === 'KeyR') resetRace();
+addEventListener('keydown', e => { if (menuOpen()) return; keys[e.code] = true; if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault(); ensureAudio(); music.unlock();
+  if (race.state === 'title') { if (e.code === 'Enter' || e.code === 'Space') startFromTitle(); else if (e.code === 'KeyS') openSettings(); else music.play('menu'); return; }
+  if (race.state === 'intro') { resetRace(); return; }
+  if ((race.state === 'race' || race.state === 'countdown') && (e.code === 'Escape' || e.code === 'KeyP')) { pause(); return; }
+  if (race.state === 'finished' || race.state === 'retired') { if (e.code === 'KeyR' || e.code === 'Enter') resetRace(); else if (e.code === 'Escape') quitToTitle(); }
   if (e.code === 'KeyR' && race.state === 'race' && e.shiftKey) resetRace(); });
 addEventListener('keyup', e => { keys[e.code] = false; });
 let boostLatch = false;
@@ -81,7 +119,7 @@ function readInput() {
   let thr = keys.ArrowUp || keys.KeyW ? 1 : 0, brake = keys.ArrowDown || keys.KeyS ? 1 : 0;
   let drift = !!(keys.KeyQ || keys.KeyE || keys.ShiftLeft || keys.ShiftRight), boost = !!(keys.Space || keys.KeyX);
   if (gp) { const ax = gp.axes[0] || 0; if (Math.abs(ax) > 0.12) steer = -ax; if (gp.buttons[0]?.pressed || (gp.buttons[7]?.value || 0) > 0.2) thr = 1; if (gp.buttons[1]?.pressed || (gp.buttons[6]?.value || 0) > 0.2) brake = 1; if (gp.buttons[4]?.pressed || gp.buttons[5]?.pressed) drift = true; if (gp.buttons[2]?.pressed || gp.buttons[3]?.pressed) boost = true;
-    if (race.state === 'title' && gp.buttons[9]?.pressed) resetRace(); if ((race.state === 'finished' || race.state === 'retired') && gp.buttons[9]?.pressed) resetRace(); }
+  }
   return { steer, thr, brake, drift, boost };
 }
 
@@ -129,7 +167,7 @@ function stepPlayer(P, inp, dt) {
   P.v += acc * dt; if (P.v < 0) P.v = 0; if (P.v > top) P.v = Math.max(top, P.v - 90 * dt);
   // heading in the road frame: the road turns under a machine that keeps its world heading
   const k = tr.curv(P.s);
-  const rate = P.STEER * (inp.drift ? P.DM : 1) * (P.air ? 0.35 : 1);
+  const rate = P.STEER * (S.steer / 100) * (inp.drift ? P.DM : 1) * (P.air ? 0.35 : 1);
   P.h += P.steer * rate * dt - P.v * k * dt;
   const al = (Math.abs(P.steer) > 0.05 ? 1.0 : 2.4) * (inp.drift ? 0.5 : 1);
   P.h -= P.h * al * dt; P.h = clamp(P.h, -0.7, 0.7);
@@ -187,7 +225,7 @@ function contacts(dt) {
 function step(dt) {
   const P = player;
   if (race.state === 'countdown') { race.countdown -= dt; const n = Math.ceil(race.countdown); if (n !== race._cd) { race._cd = n; if (n > 0) sfx.beep(false); else { sfx.beep(true); race.state = 'race'; P.lapStart = 0; toast('GO!', 0.8); } } P.thrust = readInput().thr; return; }
-  if (race.state !== 'race' && race.state !== 'finished') return;
+  if (race.state !== 'race' && race.state !== 'finished') return; // title / intro / paused / retired: frozen
   race.time += dt;
   const inp = race.state === 'race' ? (BOT ? botInput(P) : readInput()) : { steer: 0, thr: 0, brake: 0.3, drift: false, boost: false };
   const prevS = P.s;
@@ -219,12 +257,12 @@ function updateCamera(dt) {
   const h = P.h * 0.45;
   _fwd.copy(F.t).multiplyScalar(Math.cos(h)).addScaledVector(F.r, -Math.sin(h));
   _pos.copy(F.p).addScaledVector(F.r, P.u).addScaledVector(F.n, P.n + 1.1);
-  _d.copy(_pos).addScaledVector(_fwd, -(13 + P.v * 0.03)).addScaledVector(F.n, 4.6 + Math.max(0, P.n * 0.2));
+  const far = S.camera === 'far'; _d.copy(_pos).addScaledVector(_fwd, -((far ? 20 : 13) + P.v * 0.03)).addScaledVector(F.n, (far ? 7.5 : 4.6) + Math.max(0, P.n * 0.2));
   if (!camInit) { camPos.copy(_d); camUp.copy(F.n); camInit = true; }
   const a = 1 - Math.exp(-dt * 9), b = 1 - Math.exp(-dt * 7);
   camPos.lerp(_d, a); camUp.lerp(F.n, b).normalize();
   camLook.copy(_pos).addScaledVector(_fwd, 40).addScaledVector(F.n, 0.5);
-  if (race.shake > 0) { race.shake = Math.max(0, race.shake - dt * 2.2); camPos.addScaledVector(F.r, (Math.random() - 0.5) * race.shake * 1.2).addScaledVector(F.n, (Math.random() - 0.5) * race.shake * 0.8); }
+  if (race.shake > 0) { race.shake = Math.max(0, race.shake - dt * 2.2); if (S.shake) camPos.addScaledVector(F.r, (Math.random() - 0.5) * race.shake * 1.2).addScaledVector(F.n, (Math.random() - 0.5) * race.shake * 0.8); }
   camera.position.copy(camPos); camera.up.copy(camUp); camera.lookAt(camLook);
   const fov = 66 + P.v * 0.055 + (P.boost > 0 ? 12 : 0) + (P.padT > 0 ? 5 : 0);
   camera.fov += (fov - camera.fov) * Math.min(1, dt * 6); camera.updateProjectionMatrix();
@@ -232,7 +270,7 @@ function updateCamera(dt) {
 
 // ---------- HUD ----------
 const $ = id => document.getElementById(id);
-const ui = { speed: $('speed'), energy: $('energyFill'), energyWrap: $('energy'), lap: $('lap'), rank: $('rank'), boost: $('boost'), msg: $('msg'), times: $('times'), title: $('title'), end: $('end'), endTitle: $('endTitle'), endBody: $('endBody'), fade: $('fade'), mini: $('mini'), name: $('nameTag') };
+const ui = { speed: $('speed'), energy: $('energyFill'), energyWrap: $('energy'), lap: $('lap'), rank: $('rank'), boost: $('boost'), msg: $('msg'), times: $('times'), title: $('title'), end: $('end'), endTitle: $('endTitle'), endBody: $('endBody'), fade: $('fade'), mini: $('mini'), name: $('nameTag'), unit: $('unit'), track: $('track'), intro: $('intro'), introCap: $('introCap'), black: $('black') };
 const mini = ui.mini.getContext('2d'); const miniBase = document.createElement('canvas'); miniBase.width = miniBase.height = 170;
 { let minX = 1e9, maxX = -1e9, minZ = 1e9, maxZ = -1e9; for (const p of tr.pos) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z); }
   const sc = 150 / Math.max(maxX - minX, maxZ - minZ); mini.mx = x => 10 + (x - minX) * sc + (150 - (maxX - minX) * sc) / 2; mini.mz = z => 10 + (z - minZ) * sc + (150 - (maxZ - minZ) * sc) / 2;
@@ -241,7 +279,8 @@ const mini = ui.mini.getContext('2d'); const miniBase = document.createElement('
 let hudFrame = 0;
 function updateHUD(dt) {
   const P = player;
-  ui.speed.textContent = Math.round(P.v * 3.6 * SPEED_DISPLAY);
+  const kmh = P.v * 3.6 * SPEED_DISPLAY; ui.speed.textContent = Math.round(S.unit === 'mph' ? kmh * 0.621371 : kmh); ui.unit.textContent = S.unit; ui.mini.hidden = !S.minimap;
+  if (race.trackT > 0 && music.now) { race.trackT -= dt; ui.track.textContent = `\u266a ${music.now.title.toUpperCase()} \u00b7 ${music.now.by}`; ui.track.style.opacity = Math.min(1, race.trackT); } else ui.track.style.opacity = 0;
   const e = Math.max(0, P.energy); ui.energy.style.width = e + '%'; ui.energy.style.background = e > 45 ? 'linear-gradient(90deg,#3cf0a0,#9bffdf)' : e > 20 ? 'linear-gradient(90deg,#ffc22e,#ffe58a)' : 'linear-gradient(90deg,#ff2a5a,#ff8aa0)';
   ui.energyWrap.classList.toggle('hit', P.hitT > 0); ui.energyWrap.classList.toggle('charge', tr.onRecharge(P.s) && !P.air && race.state === 'race');
   ui.lap.textContent = `LAP ${Math.min(P.lap, LAPS)}/${LAPS}`;
@@ -271,8 +310,9 @@ function render(dt) {
   P.mesh.visible = P.stun <= 0 || Math.floor(bobT * 20) % 2 === 0;
   for (const rv of rivals) { const k = tr.curv(rv.s); placeMachine(rv.mesh, rv.s, rv.u, 0, clamp((rv.uT - rv.u) * 0.01, -0.15, 0.15), -(k * rv.v * 0.15 + (rv.uT - rv.u) * 0.02), Math.sin(bobT * 6 + rv.s) * 0.06); dressMachine(rv.mesh, 0.5 + rv.v / 130 * 0.6, rv.boostT > 0 ? 1 : (rv.padT > 0 ? 0.3 : 0)); }
   for (const mv of world.movers) mv(performance.now());
-  updateCamera(dt);
-  setEngine(P.v, P.thrust, P.boost > 0 ? 1 : 0);
+  if (race.state !== 'intro') updateCamera(dt);
+  const live = race.state === 'race' || race.state === 'countdown' || race.state === 'finished';
+  setEngine(live ? P.v : 0, live ? P.thrust : 0, live && P.boost > 0 ? 1 : 0, live);
   renderer.render(scene, camera);
 }
 
@@ -280,6 +320,8 @@ function render(dt) {
 let last = performance.now(), acc = 0, rafQueued = false, lastTick = 0, frames = 0;
 function tick(now) {
   lastTick = now; let dt = Math.min(0.05, (now - last) / 1000); last = now; if (dt <= 0) dt = 0.001;
+  const gp = navigator.getGamepads ? navigator.getGamepads()[0] : null; const ev = pollGamepad(gp); if (ev && ev.start) onStart();
+  if (race.state === 'intro') updateIntro(dt);
   acc += dt; let n = 0; while (acc >= DT && n++ < 8) { step(DT); acc -= DT; }
   updateHUD(dt); render(dt); frames++;
 }

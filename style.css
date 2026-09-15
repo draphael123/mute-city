@@ -43,3 +43,28 @@ kbd { display: inline-block; min-width: 14px; padding: 0 6px; border: 1px solid 
 .go { margin-top: 18px; font: italic 900 18px "Arial Black", Impact, sans-serif; color: #fff; letter-spacing: 2px; animation: pulse 0.8s infinite alternate; }
 #endBody { font: 500 16px/1.8 "Segoe UI", sans-serif; color: #dfe9ff; }
 .dim { color: #9fb0c8; font-size: 13px; }
+
+#black { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 15; }
+#track { position: absolute; left: 0; right: 0; bottom: 120px; text-align: center; font: 700 13px monospace; letter-spacing: 2px; color: #ffb3ea; text-shadow: 0 1px 3px #000; opacity: 0; transition: opacity 0.4s; }
+#intro { position: fixed; inset: 0; z-index: 12; pointer-events: none; }
+#intro[hidden] { display: none; }
+#intro .bar { position: absolute; left: 0; right: 0; height: 11vh; background: #000; }
+#intro .bar.top { top: 0; } #intro .bar.bottom { bottom: 0; }
+#introCap { position: absolute; left: 6vw; bottom: 15vh; font: italic 900 64px "Arial Black", Impact, sans-serif; color: #fff; letter-spacing: 3px; text-shadow: 0 0 24px #ff3fd0, 0 0 60px #36e0ff, 0 4px 0 #303; opacity: 0; }
+#introSkip { position: absolute; right: 4vw; bottom: 3.5vh; font: 700 12px monospace; letter-spacing: 3px; color: #9fb0c8; }
+#pause, #settings { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 25; background: rgba(4, 2, 12, 0.72); }
+#pause[hidden], #settings[hidden] { display: none; }
+.card.menu { min-width: 380px; padding: 28px 40px; }
+.card.menu.wide { min-width: 560px; }
+.card.menu h2 { margin-bottom: 18px; }
+#pauseList .item { font: italic 900 24px "Arial Black", Impact, sans-serif; letter-spacing: 2px; color: #9fb0c8; padding: 8px 18px; margin: 4px 0; border-radius: 6px; cursor: pointer; transition: color 0.1s, background 0.1s; }
+#pauseList .item.sel { color: #fff; background: rgba(255, 63, 208, 0.18); text-shadow: 0 0 16px #ff3fd0; }
+#pauseList .item.sel::before { content: '▶ '; color: #ffe66a; }
+#settingsList .row { display: flex; justify-content: space-between; align-items: center; gap: 30px; padding: 7px 14px; margin: 3px 0; border-radius: 6px; font: 700 15px monospace; letter-spacing: 1px; color: #9fb0c8; cursor: pointer; }
+#settingsList .row.sel { color: #fff; background: rgba(54, 224, 255, 0.14); }
+#settingsList .val { display: inline-flex; align-items: center; gap: 10px; min-width: 150px; justify-content: flex-end; }
+#settingsList .v { min-width: 70px; text-align: center; color: #ffe66a; }
+#settingsList .arr { color: #36e0ff; cursor: pointer; opacity: 0.5; }
+#settingsList .row.sel .arr { opacity: 1; }
+.hint { margin-top: 14px; font: 600 12px monospace; letter-spacing: 1px; color: #9fb0c8; }
+.credit { margin-top: 10px; font: 500 11px monospace; color: #6f8098; line-height: 1.4; }

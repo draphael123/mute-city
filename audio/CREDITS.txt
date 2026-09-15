@@ -1,0 +1,7 @@
+MUTE CITY soundtrack — all tracks CC0 (public domain) from OpenGameArt.org
+
+race-midnight-drive.mp3  "Midnight Drive"  by congusbongus   https://opengameart.org/content/midnight-drive
+race-space-city.mp3      "Space City"      by MintoDog       https://opengameart.org/content/space-city
+menu-vintage.mp3         "Vintage Menu"    by iamoneabe      https://opengameart.org/content/vintage-menu  (optional link: https://allmylinks.com/iamoneabe)
+
+Files were transcoded to MP3 (128-160 kbps) for the web; no other changes.

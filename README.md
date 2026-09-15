@@ -12,7 +12,7 @@ node serve.mjs
 ```
 
 Open http://localhost:5875 (root `.claude/launch.json` has a `mute-city` entry).
-Deploy is a static folder: `vercel deploy --prod --yes`.
+Deploy is a static folder: `vercel deploy --prod --yes`. GitHub: draphael123/mute-city.
 
 ## Controls
 
@@ -24,6 +24,20 @@ Deploy is a static folder: `vercel deploy --prod --yes`.
 | Boost (lap 2+, costs 15 energy) | Space / X | X / Y |
 | Brake | ↓ / S | B / left trigger |
 | Start / restart | Enter / R | Start |
+| Pause | Esc / P | Start |
+| Settings (title or pause) | S | — |
+
+Pressing Enter on the title plays an opening flyover (grid, the Twist, the
+Halfpipe, the Dive, back to the grid); any key skips it, and it can be turned
+off in Settings. Settings persist in `localStorage` (`mc-settings`): music and
+SFX volume, steering sensitivity, near/far camera, camera shake, render quality,
+km/h or mph, minimap, opening flyover.
+
+## Music
+
+CC0 tracks from OpenGameArt, credits in `audio/CREDITS.txt`: *Midnight Drive*
+(congusbongus) and *Space City* (MintoDog) alternate as race themes, *Vintage
+Menu* (iamoneabe) plays on the title and intro. Transcoded to MP3 for the web.
 
 ## The track (7.36 km, ~60 s laps)
 
@@ -54,6 +68,8 @@ Start straight with the recharge strip → **Skyline Bend** (wide, banked) →
 - `src/machine.js` — lathe hull + pods + fins; flames and boost cones scale
   with thrust.
 - `src/audio.js` — synthesised engine, wind, boost, hits, pads, countdown.
+- `src/music.js` — streamed, looped HTMLAudio soundtrack with crossfade + duck.
+- `src/menus.js` — persisted settings and the pause menu (keyboard, mouse, pad).
 
 ## Verification seam
 

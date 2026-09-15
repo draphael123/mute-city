@@ -1,11 +1,12 @@
 // MUTE CITY — synthesised audio: engine hum, boost, wall hit, pad chirp, countdown.
-let ctx = null, engine = null, master = null;
+let ctx = null, engine = null, master = null, sfxVol = 0.8;
+export function setSfxVolume(v) { sfxVol = v; if (master) master.gain.value = 0.55 * sfxVol; }
 const now = () => ctx.currentTime;
 
 export function ensureAudio() {
   if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
   ctx = new (window.AudioContext || window.webkitAudioContext)();
-  master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+  master = ctx.createGain(); master.gain.value = 0.55 * sfxVol; master.connect(ctx.destination);
   const o1 = ctx.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 60;
   const o2 = ctx.createOscillator(); o2.type = 'square'; o2.frequency.value = 61;
   const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 400; lp.Q.value = 2;
@@ -17,8 +18,9 @@ export function ensureAudio() {
   engine = { o1, o2, lp, g, ng, nf, buf };
 }
 
-export function setEngine(v, thrust, boost) {
+export function setEngine(v, thrust, boost, on = true) {
   if (!engine) return; const t = now();
+  if (!on) { engine.g.gain.setTargetAtTime(0, t, 0.1); engine.ng.gain.setTargetAtTime(0, t, 0.1); return; }
   const f = 48 + v * 1.25 + boost * 90;
   engine.o1.frequency.setTargetAtTime(f, t, 0.05); engine.o2.frequency.setTargetAtTime(f * 1.01 + 1, t, 0.05);
   engine.lp.frequency.setTargetAtTime(250 + v * 9 + thrust * 500 + boost * 1400, t, 0.06);
