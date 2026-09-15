@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MUTE CITY — Twist Road</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="boot">loading mute city…</div>
+<div id="fade"></div>
+<div id="hud">
+  <div id="topleft">
+    <div id="lap">LAP 1/3</div>
+    <div id="times"></div>
+  </div>
+  <div id="topright"><div id="rank"><b>30</b><small>/30</small></div></div>
+  <div id="msg"></div>
+  <div id="nameTag"></div>
+  <div id="bottomleft">
+    <div id="energyLabel">ENERGY</div>
+    <div id="energy"><div id="energyFill"></div></div>
+    <div id="boost"></div>
+  </div>
+  <div id="bottomright">
+    <div id="speedWrap"><span id="speed">0</span><span id="unit">km/h</span></div>
+    <canvas id="mini" width="170" height="170"></canvas>
+  </div>
+</div>
+<div id="title">
+  <div class="card">
+    <div class="eyebrow">VERTICAL SLICE</div>
+    <h1>MUTE<span>CITY</span></h1>
+    <div class="sub">TWIST ROAD · 3 LAPS · 30 MACHINES</div>
+    <div class="keys">
+      <div><kbd>↑</kbd>/<kbd>W</kbd> accelerate</div>
+      <div><kbd>←</kbd><kbd>→</kbd> steer</div>
+      <div><kbd>Shift</kbd> or <kbd>Q</kbd>/<kbd>E</kbd> slide turn</div>
+      <div><kbd>Space</kbd> boost <em>(from lap 2 — costs energy)</em></div>
+      <div><kbd>↓</kbd> brake &nbsp;·&nbsp; gamepad: A / X / LR</div>
+    </div>
+    <div class="tips">Walls drain energy. The pink strip on the pit straight recharges it. Orange plates are free speed. The back straight has no rails.</div>
+    <div class="go">PRESS <kbd>ENTER</kbd> TO RACE</div>
+  </div>
+</div>
+<div id="end" hidden>
+  <div class="card">
+    <h2 id="endTitle"></h2>
+    <div id="endBody"></div>
+    <div class="go">PRESS <kbd>R</kbd> TO RACE AGAIN</div>
+  </div>
+</div>
+<script>window.onerror = (m, s, l) => { const b = document.getElementById('boot') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'boot' })); b.textContent = 'ERROR: ' + m + ' @ ' + (s || '').split('/').pop() + ':' + l; b.style.color = '#ff5a7a'; };</script>
+<script type="module" src="src/game.js"></script>
+</body>
+</html>
